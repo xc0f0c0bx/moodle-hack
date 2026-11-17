@@ -1,0 +1,48 @@
+name: moodle-dl
+
+# Downloads course content with moodle-dl and publishes it as a run artifact.
+# Requires the repository secret MOODLE_DL_CONFIG: a base64-encoded config.json
+# created locally with `moodle-dl --init` (encode with `base64 -w0 config.json`).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1" # weekly, Monday 05:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install moodle-dl
+        run: pip install moodle-dl
+
+      - name: Download course content
+        env:
+          MOODLE_DL_CONFIG: ${{ secrets.MOODLE_DL_CONFIG }}
+        run: |
+          if [ -z "$MOODLE_DL_CONFIG" ]; then
+            echo "::error::Secret MOODLE_DL_CONFIG is not set"
+            exit 1
+          fi
+          mkdir -p dl
+          echo "$MOODLE_DL_CONFIG" | base64 -d > dl/config.json
+          cd dl
+          moodle-dl || status=$?
+          rm -f config.json
+          exit ${status:-0}
+
+      - name: Upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: moodle-files
+          path: |
+            dl/
+            !dl/config.json
+          retention-days: 30
